@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { STAGE_ASPECT, useTryOn } from "@/hooks/useTryOn";
-import { GARMENTS } from "@/lib/garments";
+import { CATEGORIES, GARMENTS, type GarmentCategory } from "@/lib/garments";
+import GarmentCarousel from "@/components/GarmentCarousel";
 
 const CONNECTION_LABEL = {
   connecting: "Connecting",
@@ -17,6 +18,15 @@ function formatTime(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function CameraIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.6a1 1 0 0 0 .8-.4l.9-1.2A1 1 0 0 1 9.6 4h4.8a1 1 0 0 1 .8.4l.9 1.2a1 1 0 0 0 .8.4h1.6A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z" />
+      <circle cx="12" cy="12.5" r="3.5" />
+    </svg>
+  );
 }
 
 export default function TryOn() {
@@ -35,6 +45,7 @@ export default function TryOn() {
     select,
     resetUsage,
   } = useTryOn();
+  const [category, setCategory] = useState<GarmentCategory | "All">("All");
 
   const cameraRef = useCallback(
     (el: HTMLVideoElement | null) => {
@@ -47,36 +58,18 @@ export default function TryOn() {
   const waiting =
     phase === "starting" || switching || connection === "connecting" || connection === "reconnecting";
   const applying = GARMENTS.find((g) => g.id === applyingId);
+  const visible = category === "All" ? GARMENTS : GARMENTS.filter((g) => g.category === category);
+
   const statusLabel =
     phase === "starting" && !connection ? "Starting" : connection ? CONNECTION_LABEL[connection] : "Offline";
-  const statusTone = connection === "generating" ? "live" : running ? "busy" : "off";
+  const statusTone = connection === "generating" ? "live" : "busy";
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden />
+          <Image src="/logo.png" alt="" width={28} height={28} className="brand-logo" priority />
           Live Try-On
-        </div>
-        <div className="topbar-right">
-          {timer && (
-            <div
-              className={`timer${timer.remaining <= 60 ? " timer-low" : ""}`}
-              title="Estimated try-on time left across your API keys. Decart doesn't report balances, so this is counted here and corrects itself each time a key runs out."
-            >
-              <span className="timer-time">{formatTime(timer.remaining)}</span>
-              <span className="timer-label">left</span>
-              <span className="timer-key">
-                {running && timer.keyNumber
-                  ? `key ${timer.keyNumber}/${timer.keyCount}`
-                  : `${timer.keyCount} ${timer.keyCount === 1 ? "key" : "keys"}`}
-              </span>
-            </div>
-          )}
-          <div className={`status status-${statusTone}`} role="status">
-            <span className="status-dot" />
-            {statusLabel}
-          </div>
         </div>
       </header>
 
@@ -87,9 +80,12 @@ export default function TryOn() {
 
             {!running && (
               <div className="splash">
-                <p className="splash-title">See yourself in any garment, live.</p>
+                <span className="splash-icon">
+                  <CameraIcon />
+                </span>
+                <h1 className="splash-title">See yourself in any garment, live</h1>
                 <p className="splash-sub">
-                  Pick a garment on the right, start your camera, and switch outfits in real time.
+                  Choose a garment, start your camera, and switch outfits in real time.
                 </p>
                 <button className="btn btn-primary" onClick={start}>
                   Start try-on
@@ -112,6 +108,14 @@ export default function TryOn() {
                   muted
                   aria-label="Your camera"
                 />
+                <div className={`badge badge-${statusTone}`} role="status">
+                  <span className="badge-dot" />
+                  {statusLabel}
+                </div>
+                <button className="btn btn-stop" onClick={stop}>
+                  <span className="stop-square" aria-hidden />
+                  Stop
+                </button>
                 {waiting && (
                   <div className="overlay">
                     <span className="spinner" />
@@ -123,14 +127,11 @@ export default function TryOn() {
                   </div>
                 )}
                 {!waiting && applying && (
-                  <div className="chip">
+                  <div className="toast">
                     <span className="spinner spinner-sm" />
                     Dressing you in {applying.name}…
                   </div>
                 )}
-                <button className="btn btn-stop" onClick={stop}>
-                  Stop
-                </button>
               </>
             )}
           </div>
@@ -142,41 +143,29 @@ export default function TryOn() {
           )}
         </section>
 
-        <aside className="rack" aria-label="Garments">
-          <h2 className="rack-title">Garments</h2>
-          <div className="grid">
-            {GARMENTS.map((garment) => {
-              const active = garment.id === activeId;
-              const busy = garment.id === applyingId;
-              return (
-                <button
-                  key={garment.id}
-                  className={`card${active ? " card-active" : ""}`}
-                  onClick={() => select(garment)}
-                  aria-pressed={active}
-                >
-                  <span className="card-img">
-                    <Image
-                      src={garment.image}
-                      alt={garment.name}
-                      fill
-                      sizes="(max-width: 900px) 45vw, 180px"
-                      style={{ objectFit: "contain" }}
-                    />
-                    {busy && (
-                      <span className="card-busy">
-                        <span className="spinner spinner-sm" />
-                      </span>
-                    )}
-                  </span>
-                  <span className="card-name">{garment.name}</span>
-                  <span className="card-type">{garment.type}</span>
-                </button>
-              );
-            })}
+        <section className="picker" aria-label="Garments">
+          <div className="filters">
+            {(["All", ...CATEGORIES] as const).map((name) => (
+              <button
+                key={name}
+                className={`filter${category === name ? " filter-active" : ""}`}
+                onClick={() => setCategory(name)}
+                aria-pressed={category === name}
+              >
+                {name}
+              </button>
+            ))}
           </div>
-        </aside>
+
+          <GarmentCarousel garments={visible} activeId={activeId} applyingId={applyingId} onSelect={select} />
+        </section>
       </main>
+
+      {timer && (
+        <div className={`timer${timer.remaining <= 60 ? " timer-low" : ""}`}>
+          {formatTime(timer.remaining)}
+        </div>
+      )}
     </div>
   );
 }
