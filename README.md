@@ -1,6 +1,6 @@
 # Live Try-On
 
-A small Next.js app that streams your webcam to [Decart](https://decart.ai)'s realtime video editing model, Lucy 2.5 at standard speed (`lucy-2.5`), and lets you swap between 12 garments with one click.
+A small Next.js app that streams your webcam to [Decart](https://decart.ai)'s realtime virtual try-on model (`lucy-vton-latest`, fast mode), and lets you swap between 12 garments with one click.
 
 Based on the `standalone` example from [DecartAI/tryon-examples](https://github.com/DecartAI/tryon-examples) (MIT). The garment images in `public/garments` come from Wikimedia Commons; sources and licenses are in [`public/garments/CREDITS.md`](public/garments/CREDITS.md).
 
@@ -17,7 +17,14 @@ Based on the `standalone` example from [DecartAI/tryon-examples](https://github.
 
 3. Open http://localhost:3000, click **Start try-on**, allow the camera, then click any garment.
 
-## Deploy to Vercel
+## Deploy to GCP (personal use)
+
+The GCP setup uses Cloud Run in Singapore, sleeping when idle and capped at one
+instance. It is configured for `livetryon.fabricvton.com` with managed HTTPS; API keys are
+provided by Secret Manager. See [`deploy/README.md`](deploy/README.md) for the
+deployment commands, GoDaddy DNS instructions, costs, and key rotation.
+
+## Deploy to Vercel (alternative)
 
 1. Push this folder to a GitHub repo and import it in Vercel (framework is detected as Next.js).
 2. In **Project Settings → Environment Variables** add `DECART_API_KEYS` (comma-separated). `keys.csv` is gitignored, so it isn't deployed.
@@ -28,18 +35,18 @@ Based on the `standalone` example from [DecartAI/tryon-examples](https://github.
 - `lib/keys.ts` — loads the key pool from `keys.csv` (re-read on every request), `DECART_API_KEYS` and `DECART_API_KEY`.
 - `app/api/token/route.ts` — `GET` lists the pool as hashed ids; `POST { keyId }` mints a short-lived client token for one key. The permanent keys never reach the browser.
 - `lib/rotatingSession.ts` — the live session. It connects to Decart over WebRTC, swaps garments with `setImage(image, { prompt })` without reconnecting, and rotates keys: shortly before the current key is expected to run dry it opens a standby session on the next key (already wearing the selected garment), and when Decart ends the current one with `insufficient_credits` the standby's stream is swapped in.
-- `lib/keyUsage.ts` — the countdown. Decart has no balance API, so seconds of live generation are counted per key in `localStorage` against a budget: `CREDITS_PER_KEY` (default 1000) ÷ 2 credits/sec ≈ 500 seconds until a key has actually run out, then however long that key really lasted.
+- `lib/keyUsage.ts` — the countdown. Decart has no balance API, so seconds of live generation are counted per key in `localStorage` against a budget: `CREDITS_PER_KEY` (default 1000) ÷ 4 credits/sec ≈ 250 seconds until a key has actually run out, then however long that key really lasted.
 - `hooks/useTryOn.ts` — opens the camera and connects the session to React state.
 - `lib/garments.ts` — the garment catalog. Each entry has an image and a prompt; edit or add entries here.
-- `components/TryOn.tsx` — the UI.
+- `components/TryOn.tsx` — the page; `components/GarmentCarousel.tsx` — the endless, swipeable garment picker (swipe, tap, arrow buttons or arrow keys all change the outfit).
 
 ## Adding your own garments
 
-Drop a clean product shot (plain background, at least 512×512) in `public/garments/` and add an entry to `lib/garments.ts`. Prompts work best at 20–30 words with colour, material and fit, using "Dress the person in …" for full outfits or "Replace the person's top with …" for single pieces. If the image isn't yours, add its source and license to `public/garments/CREDITS.md`.
+Drop a clean product shot (plain background, at least 512×512) in `public/garments/` and add an entry to `lib/garments.ts`. Prompts work best at 20–30 words with colour, material and fit, using "Substitute the current top with …" for clothing or "Add … to the person's head" for hats. If the image isn't yours, add its source and license to `public/garments/CREDITS.md`.
 
 ## Rotating API keys
 
-Lucy 2.5 realtime bills 2 credits per second, so a 1000-credit key lasts about 8 minutes. (Fast mode, `speed: "fast"`, lowers latency but costs 4 credits per second.) The app rotates through every key in `keys.csv`. The timer in the top bar shows the estimated time left across all of them and which key is on screen. Keys that run out are remembered in the browser and skipped; new keys are picked up the next time you press **Start**. If you top up keys that ran out, use **Reset the timer** under the Start button.
+The try-on model in fast mode (`speed: "fast"`, for lower latency) bills 4 credits per second, so a 1000-credit key lasts about 4 minutes. The app rotates through every key in `keys.csv`. The timer at the bottom of the page shows the estimated time left across all of them and which key is on screen. Keys that run out are remembered in the browser and skipped; new keys are picked up the next time you press **Start**. If you top up keys that ran out, use **Reset the timer** under the Start button.
 
 Handoffs overlap by a couple of seconds (both keys are billed while the standby comes up), which keeps the picture from dropping. If a key ends sooner than estimated, the app falls back to connecting the next key on the spot, which takes a few seconds; the estimate corrects itself from then on.
 
