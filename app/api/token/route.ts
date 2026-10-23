@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { loadApiKeys, secondsPerKey } from "@/lib/keys";
 
 const NO_KEYS_ERROR =
-  "No Decart API keys found. Add them to keys.csv (one per line) or set DECART_API_KEY, then try again.";
+  "No API keys found. Add them to keys.csv (one per line), then try again.";
 
 // Refuse cross-site callers so other websites can't spend your credits
 // through this endpoint. Same-origin fetches always send a matching Origin.

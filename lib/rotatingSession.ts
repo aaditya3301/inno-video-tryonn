@@ -3,7 +3,7 @@ import type { Garment } from "@/lib/garments";
 import { loadGarmentBlob } from "@/lib/image";
 import { budgetOf, saveUsage, usageOf, type UsageStore } from "@/lib/keyUsage";
 
-export const model = models.realtime("lucy-2.5");
+export const model = models.realtime("lucy-vton-latest");
 
 export interface KeyPool {
   keyIds: string[];
@@ -41,7 +41,6 @@ interface Slot {
   rt: RealTimeClient | null;
   stream: MediaStream | null;
   state: ConnectionState | null;
-  garmentId: string;
   launchedAt: number;
   generatingAt: number | null;
 }
@@ -61,7 +60,7 @@ function describeSessionEnd(reason: string): string {
   switch (reason) {
     case "moderation_violation":
     case "policy_violation":
-      return "The session was ended by Decart's content policy.";
+      return "The session was ended by the content policy.";
     default:
       return "The session ended.";
   }
@@ -81,7 +80,7 @@ async function fetchToken(keyId: string): Promise<{ apiKey: string }> {
 /**
  * A live try-on that rotates through a pool of API keys. Shortly before the
  * current key is expected to run out, a standby session is opened on the next
- * key, already wearing the selected garment; when Decart ends the current
+ * key and dressed in the selected garment; when Decart ends the current
  * session for insufficient credits the standby's stream is swapped onto the
  * screen, so the picture doesn't drop.
  */
@@ -130,7 +129,6 @@ export class RotatingSession {
   }
 
   private async dress(slot: Slot, garment: Garment, image: Blob) {
-    slot.garmentId = garment.id;
     await slot.rt!.setImage(image, { prompt: garment.prompt, enhance: false });
   }
 
@@ -181,31 +179,29 @@ export class RotatingSession {
   }
 
   private launch(keyId: string): Slot {
-    const garment = this.o.garment();
     const slot: Slot = {
       keyId,
       rt: null,
       stream: null,
       state: "connecting",
-      garmentId: garment.id,
       launchedAt: performance.now(),
       generatingAt: null,
     };
-    this.open(slot, garment).catch((err) => this.onLaunchFailed(slot, err));
+    this.open(slot).catch((err) => this.onLaunchFailed(slot, err));
     return slot;
   }
 
-  private async open(slot: Slot, garment: Garment) {
-    const [token, image] = await Promise.all([fetchToken(slot.keyId), loadGarmentBlob(garment.image)]);
+  private async open(slot: Slot) {
+    const token = await fetchToken(slot.keyId);
     if (!this.isCurrent(slot)) return;
 
     const client = createDecartClient({ apiKey: token.apiKey });
+    // Fast mode (4 credits/sec) for lower latency. Connect first, then dress with
+    // setImage, the flow that gave good results with the try-on model.
     const rt = await client.realtime.connect(this.o.camera, {
       model,
-      // Standard speed (no `speed: "fast"`): 2 credits/sec, half the cost of fast mode.
+      speed: "fast",
       mirror: true,
-      // Start already dressed so a swapped-in session looks right on its first frame.
-      initialState: { image, prompt: { text: garment.prompt, enhance: false } },
       onRemoteStream: (stream) => {
         slot.stream = stream;
         if (slot === this.active) this.attach(slot);
@@ -227,12 +223,15 @@ export class RotatingSession {
       this.live = true;
       this.o.events.onLive();
     }
-    // The user may have picked another garment while this session was connecting.
-    const current = this.o.garment();
-    if (slot.garmentId !== current.id) {
-      loadGarmentBlob(current.image)
-        .then((img) => this.dress(slot, current, img))
-        .catch(() => {});
+    // Dress it in whatever is selected now (a standby gets this before it is shown).
+    const garment = this.o.garment();
+    try {
+      await this.dress(slot, garment, await loadGarmentBlob(garment.image));
+    } catch (err) {
+      if (slot === this.active) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.o.events.onError(`Couldn't apply ${garment.name}: ${message}`);
+      }
     }
   }
 

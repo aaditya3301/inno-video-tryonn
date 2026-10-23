@@ -146,7 +146,7 @@ export function useTryOn() {
     try {
       const pool = await loadPool();
       if (pool.keyIds.length === 0) {
-        throw new Error("No Decart API keys found. Add them to keys.csv (one per line) and try again.");
+        throw new Error("No API keys found. Add them to keys.csv (one per line) and try again.");
       }
       if (pool.keyIds.every((id) => usage().keys[id]?.exhausted)) {
         throw new Error("All your API keys are out of credits. Add fresh keys to keys.csv.");
