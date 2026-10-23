@@ -1,0 +1,4 @@
+# Copy this file to keys.csv and paste your Decart API keys below, one per line.
+# keys.csv is gitignored. Lines starting with # are ignored, and an optional
+# label column is fine, e.g.:  <your key>,account 2
+key

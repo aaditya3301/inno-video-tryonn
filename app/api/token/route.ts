@@ -1,37 +1,58 @@
 import { createDecartClient } from "@decartai/sdk";
 import { NextResponse } from "next/server";
+import { loadApiKeys, secondsPerKey } from "@/lib/keys";
 
-// Mints a short-lived client token so the permanent DECART_API_KEY never
-// reaches the browser.
-export async function POST(request: Request) {
-  // Refuse cross-site callers so other websites can't spend your credits
-  // through this endpoint. Same-origin fetches always send a matching Origin.
+const NO_KEYS_ERROR =
+  "No Decart API keys found. Add them to keys.csv (one per line) or set DECART_API_KEY, then try again.";
+
+// Refuse cross-site callers so other websites can't spend your credits
+// through this endpoint. Same-origin fetches always send a matching Origin.
+function isCrossSite(request: Request): boolean {
   const origin = request.headers.get("origin");
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  if (origin && new URL(origin).host !== host) {
+  return !!origin && new URL(origin).host !== host;
+}
+
+// Lists the key pool (hashed ids only) so the browser can rotate through it
+// and estimate how much try-on time is left.
+export async function GET(request: Request) {
+  if (isCrossSite(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const keys = await loadApiKeys();
+  return NextResponse.json(
+    { keyIds: keys.map((k) => k.id), secondsPerKey: secondsPerKey() },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+// Mints a short-lived client token for one key in the pool so the permanent
+// keys never reach the browser.
+export async function POST(request: Request) {
+  if (isCrossSite(request)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const apiKey = process.env.DECART_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        error:
-          "DECART_API_KEY is not set. Add it to .env.local (or your Vercel project's environment variables) and restart.",
-      },
-      { status: 500 },
-    );
+  const keys = await loadApiKeys();
+  if (keys.length === 0) {
+    return NextResponse.json({ error: NO_KEYS_ERROR }, { status: 500 });
+  }
+
+  const { keyId } = (await request.json().catch(() => ({}))) as { keyId?: string };
+  const entry = keyId ? keys.find((k) => k.id === keyId) : keys[0];
+  if (!entry) {
+    return NextResponse.json({ error: "That API key is no longer in keys.csv." }, { status: 404 });
   }
 
   try {
-    const client = createDecartClient({ apiKey });
+    const client = createDecartClient({ apiKey: entry.key });
     // Minted fresh on every connect; the session keeps running after expiry.
     const token = await client.tokens.create({ expiresIn: 300 });
-    return NextResponse.json(token, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ...token, keyId: entry.id }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error("Failed to create Decart client token:", error);
+    console.error(`Failed to create Decart client token for key ${entry.id}:`, error);
     return NextResponse.json(
-      { error: "Could not create a session token. Check that your DECART_API_KEY is valid." },
+      { error: "Could not create a session token. Check that this API key is valid." },
       { status: 502 },
     );
   }

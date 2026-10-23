@@ -1,21 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  createDecartClient,
-  models,
-  resolveFpsNumber,
-  type ConnectionState,
-  type RealTimeClient,
-} from "@decartai/sdk";
+import { resolveFpsNumber, type ConnectionState } from "@decartai/sdk";
 import { GARMENTS, type Garment } from "@/lib/garments";
 import { loadGarmentBlob } from "@/lib/image";
+import { loadUsage, remainingSeconds, saveUsage, type UsageStore } from "@/lib/keyUsage";
+import { model, RotatingSession, type KeyPool } from "@/lib/rotatingSession";
 
 export type Phase = "idle" | "starting" | "live";
 
-const model = models.realtime("lucy-vton-latest");
-
 export const STAGE_ASPECT = `${model.width} / ${model.height}`;
+
+export interface TimerInfo {
+  /** Estimated seconds of try-on left across all keys. */
+  remaining: number;
+  /** 1-based position of the key on screen, or null when not live. */
+  keyNumber: number | null;
+  keyCount: number;
+  allExhausted: boolean;
+}
 
 function describeError(err: unknown): string {
   if (err instanceof DOMException) {
@@ -28,35 +31,25 @@ function describeError(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
 }
 
-function describeSessionEnd(reason: string): string {
-  switch (reason) {
-    case "insufficient_credits":
-      return "Your Decart account is out of credits.";
-    case "session_limit":
-      return "Too many live sessions are running on this API key. Close one and try again.";
-    case "moderation_violation":
-    case "policy_violation":
-      return "The session was ended by Decart's content policy.";
-    default:
-      return "The session ended.";
-  }
-}
-
 export function useTryOn() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [connection, setConnection] = useState<ConnectionState | null>(null);
+  const [switching, setSwitching] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [activeId, setActiveId] = useState(GARMENTS[0].id);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [timer, setTimer] = useState<TimerInfo | null>(null);
 
   const outputRef = useRef<HTMLVideoElement | null>(null);
-  const rtRef = useRef<RealTimeClient | null>(null);
+  const sessionRef = useRef<RotatingSession | null>(null);
   const cameraRef = useRef<MediaStream | null>(null);
+  const poolRef = useRef<KeyPool | null>(null);
+  const usageRef = useRef<UsageStore | null>(null);
   const activeIdRef = useRef(activeId);
   const phaseRef = useRef<Phase>("idle");
   // Bumped on every start/stop so stale async work can tell it was cancelled.
-  const sessionRef = useRef(0);
+  const runRef = useRef(0);
   // Bumped on every garment change so only the latest selection is applied.
   const applyRef = useRef(0);
 
@@ -65,26 +58,73 @@ export function useTryOn() {
     setPhase(next);
   }, []);
 
+  const usage = useCallback(() => (usageRef.current ??= loadUsage()), []);
+
+  const refreshTimer = useCallback(() => {
+    const pool = poolRef.current;
+    if (!pool) return;
+    const store = usage();
+    const index = pool.keyIds.indexOf(sessionRef.current?.activeKeyId ?? "");
+    const next: TimerInfo = {
+      remaining: Math.ceil(remainingSeconds(store, pool.keyIds, pool.secondsPerKey)),
+      keyNumber: index >= 0 ? index + 1 : null,
+      keyCount: pool.keyIds.length,
+      allExhausted: pool.keyIds.length > 0 && pool.keyIds.every((id) => store.keys[id]?.exhausted),
+    };
+    setTimer((prev) =>
+      prev &&
+      prev.remaining === next.remaining &&
+      prev.keyNumber === next.keyNumber &&
+      prev.keyCount === next.keyCount &&
+      prev.allExhausted === next.allExhausted
+        ? prev
+        : next,
+    );
+  }, [usage]);
+
+  // Re-read on every start so keys added to keys.csv are picked up.
+  const loadPool = useCallback(async (): Promise<KeyPool> => {
+    const res = await fetch("/api/token", { cache: "no-store" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error ?? "Could not load your API keys.");
+    poolRef.current = { keyIds: body.keyIds, secondsPerKey: body.secondsPerKey };
+    refreshTimer();
+    return poolRef.current;
+  }, [refreshTimer]);
+
   const teardown = useCallback(() => {
-    rtRef.current?.disconnect();
-    rtRef.current = null;
+    sessionRef.current?.stop();
+    sessionRef.current = null;
     cameraRef.current?.getTracks().forEach((t) => t.stop());
     cameraRef.current = null;
     if (outputRef.current) outputRef.current.srcObject = null;
     setCameraStream(null);
     setConnection(null);
+    setSwitching(false);
     setApplyingId(null);
   }, []);
 
+  const end = useCallback(
+    (reason: string | null) => {
+      runRef.current++;
+      applyRef.current++;
+      teardown();
+      updatePhase("idle");
+      setMessage(reason);
+      refreshTimer();
+    },
+    [refreshTimer, teardown, updatePhase],
+  );
+
   const applyGarment = useCallback(async (garment: Garment) => {
-    const rt = rtRef.current;
-    if (!rt) return;
+    const session = sessionRef.current;
+    if (!session) return;
     const ticket = ++applyRef.current;
     setApplyingId(garment.id);
     try {
       const image = await loadGarmentBlob(garment.image);
-      if (ticket !== applyRef.current || rtRef.current !== rt) return;
-      await rt.setImage(image, { prompt: garment.prompt, enhance: false });
+      if (ticket !== applyRef.current || sessionRef.current !== session) return;
+      await session.setGarment(garment, image);
       if (ticket === applyRef.current) setMessage(null);
     } catch (err) {
       if (ticket === applyRef.current) {
@@ -97,13 +137,22 @@ export function useTryOn() {
 
   const start = useCallback(async () => {
     if (phaseRef.current !== "idle") return;
-    const session = ++sessionRef.current;
-    const cancelled = () => session !== sessionRef.current;
+    const run = ++runRef.current;
+    const cancelled = () => run !== runRef.current;
 
     updatePhase("starting");
     setMessage(null);
 
     try {
+      const pool = await loadPool();
+      if (pool.keyIds.length === 0) {
+        throw new Error("No Decart API keys found. Add them to keys.csv (one per line) and try again.");
+      }
+      if (pool.keyIds.every((id) => usage().keys[id]?.exhausted)) {
+        throw new Error("All your API keys are out of credits. Add fresh keys to keys.csv.");
+      }
+      if (cancelled()) return;
+
       const camera = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
@@ -120,69 +169,57 @@ export function useTryOn() {
       cameraRef.current = camera;
       setCameraStream(camera);
 
-      // A fresh token for every connect; the permanent key stays on the server.
-      const res = await fetch("/api/token", { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? "Could not get a session token.");
-      if (cancelled()) return;
-
-      const client = createDecartClient({ apiKey: body.apiKey });
-      const rt = await client.realtime.connect(camera, {
-        model,
-        mirror: true,
-        onRemoteStream: (stream) => {
-          if (outputRef.current) outputRef.current.srcObject = stream;
-        },
-        onConnectionChange: (state) => {
-          if (!cancelled()) setConnection(state);
+      const session = new RotatingSession({
+        camera,
+        pool,
+        usage: usage(),
+        garment: () => GARMENTS.find((g) => g.id === activeIdRef.current) ?? GARMENTS[0],
+        output: () => outputRef.current,
+        events: {
+          onConnection: setConnection,
+          onSwitching: setSwitching,
+          onLive: () => updatePhase("live"),
+          onError: setMessage,
+          onEnd: end,
+          onUsage: refreshTimer,
         },
       });
-      if (cancelled()) {
-        rt.disconnect();
-        return;
-      }
-
-      rt.on("error", (err) => setMessage(err.message));
-      rt.on("sessionEnded", ({ reason }) => {
-        if (cancelled()) return;
-        sessionRef.current++;
-        teardown();
-        updatePhase("idle");
-        setMessage(describeSessionEnd(reason));
-      });
-
-      rtRef.current = rt;
-      updatePhase("live");
-      const garment = GARMENTS.find((g) => g.id === activeIdRef.current) ?? GARMENTS[0];
-      void applyGarment(garment);
+      sessionRef.current = session;
+      session.start();
     } catch (err) {
       if (cancelled()) return;
-      teardown();
-      updatePhase("idle");
-      setMessage(describeError(err));
+      end(describeError(err));
     }
-  }, [applyGarment, teardown, updatePhase]);
+  }, [end, loadPool, refreshTimer, updatePhase, usage]);
 
-  const stop = useCallback(() => {
-    sessionRef.current++;
-    applyRef.current++;
-    teardown();
-    updatePhase("idle");
-  }, [teardown, updatePhase]);
+  const stop = useCallback(() => end(null), [end]);
 
   const select = useCallback(
     (garment: Garment) => {
       activeIdRef.current = garment.id;
       setActiveId(garment.id);
-      if (rtRef.current) void applyGarment(garment);
+      if (sessionRef.current) void applyGarment(garment);
     },
     [applyGarment],
   );
 
-  // Release the camera and the realtime session if the page unmounts.
+  /** Forget recorded usage, e.g. after topping up the keys that ran out. */
+  const resetUsage = useCallback(() => {
+    usageRef.current = { keys: {} };
+    saveUsage(usageRef.current);
+    setMessage(null);
+    refreshTimer();
+  }, [refreshTimer]);
+
+  // Show the countdown before the first start.
+  useEffect(() => {
+    loadPool().catch(() => {});
+  }, [loadPool]);
+
+  // Release the camera and the realtime sessions if the page unmounts.
   useEffect(() => {
     return () => {
-      sessionRef.current++;
+      runRef.current++;
       teardown();
     };
   }, [teardown]);
@@ -190,13 +227,16 @@ export function useTryOn() {
   return {
     phase,
     connection,
+    switching,
     message,
     activeId,
     applyingId,
     cameraStream,
+    timer,
     outputRef,
     start,
     stop,
     select,
+    resetUsage,
   };
 }

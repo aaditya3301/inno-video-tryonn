@@ -13,9 +13,28 @@ const CONNECTION_LABEL = {
   disconnected: "Disconnected",
 } as const;
 
+function formatTime(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export default function TryOn() {
-  const { phase, connection, message, activeId, applyingId, cameraStream, outputRef, start, stop, select } =
-    useTryOn();
+  const {
+    phase,
+    connection,
+    switching,
+    message,
+    activeId,
+    applyingId,
+    cameraStream,
+    timer,
+    outputRef,
+    start,
+    stop,
+    select,
+    resetUsage,
+  } = useTryOn();
 
   const cameraRef = useCallback(
     (el: HTMLVideoElement | null) => {
@@ -25,7 +44,8 @@ export default function TryOn() {
   );
 
   const running = phase !== "idle";
-  const waiting = phase === "starting" || connection === "connecting" || connection === "reconnecting";
+  const waiting =
+    phase === "starting" || switching || connection === "connecting" || connection === "reconnecting";
   const applying = GARMENTS.find((g) => g.id === applyingId);
   const statusLabel =
     phase === "starting" && !connection ? "Starting" : connection ? CONNECTION_LABEL[connection] : "Offline";
@@ -38,9 +58,25 @@ export default function TryOn() {
           <span className="brand-mark" aria-hidden />
           Live Try-On
         </div>
-        <div className={`status status-${statusTone}`} role="status">
-          <span className="status-dot" />
-          {statusLabel}
+        <div className="topbar-right">
+          {timer && (
+            <div
+              className={`timer${timer.remaining <= 60 ? " timer-low" : ""}`}
+              title="Estimated try-on time left across your API keys. Decart doesn't report balances, so this is counted here and corrects itself each time a key runs out."
+            >
+              <span className="timer-time">{formatTime(timer.remaining)}</span>
+              <span className="timer-label">left</span>
+              <span className="timer-key">
+                {running && timer.keyNumber
+                  ? `key ${timer.keyNumber}/${timer.keyCount}`
+                  : `${timer.keyCount} ${timer.keyCount === 1 ? "key" : "keys"}`}
+              </span>
+            </div>
+          )}
+          <div className={`status status-${statusTone}`} role="status">
+            <span className="status-dot" />
+            {statusLabel}
+          </div>
         </div>
       </header>
 
@@ -58,6 +94,11 @@ export default function TryOn() {
                 <button className="btn btn-primary" onClick={start}>
                   Start try-on
                 </button>
+                {timer?.allExhausted && (
+                  <button className="btn-link" onClick={resetUsage}>
+                    Topped up your keys? Reset the timer
+                  </button>
+                )}
               </div>
             )}
 
@@ -74,7 +115,11 @@ export default function TryOn() {
                 {waiting && (
                   <div className="overlay">
                     <span className="spinner" />
-                    {connection === "reconnecting" ? "Reconnecting…" : "Starting your live session…"}
+                    {switching
+                      ? "Switching to your next API key…"
+                      : connection === "reconnecting"
+                        ? "Reconnecting…"
+                        : "Starting your live session…"}
                   </div>
                 )}
                 {!waiting && applying && (
