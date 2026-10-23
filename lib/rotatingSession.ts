@@ -202,8 +202,7 @@ export class RotatingSession {
     const client = createDecartClient({ apiKey: token.apiKey });
     const rt = await client.realtime.connect(this.o.camera, {
       model,
-      // Fast mode: lower latency and higher throughput, billed at 4 credits/sec.
-      speed: "fast",
+      // Standard speed (no `speed: "fast"`): 2 credits/sec, half the cost of fast mode.
       mirror: true,
       // Start already dressed so a swapped-in session looks right on its first frame.
       initialState: { image, prompt: { text: garment.prompt, enhance: false } },

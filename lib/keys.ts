@@ -40,8 +40,8 @@ export async function loadApiKeys(): Promise<ApiKey[]> {
   }));
 }
 
-/** Lucy 2.5 realtime in fast mode (see lib/rotatingSession.ts). */
-const CREDITS_PER_SECOND = 4;
+/** Lucy 2.5 realtime at standard speed (see lib/rotatingSession.ts); fast mode would be 4. */
+const CREDITS_PER_SECOND = 2;
 
 /** Seconds of live try-on one key's credits buy; only used for the on-screen estimate. */
 export function secondsPerKey(): number {
