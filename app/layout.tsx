@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Live Try-On",
-  description: "Try garments on in real time with your camera, powered by Decart.",
+  description: "Try garments on in real time with your camera.",
 };
 
 export const viewport: Viewport = {
