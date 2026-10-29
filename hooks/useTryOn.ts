@@ -5,6 +5,7 @@ import { resolveFpsNumber, type ConnectionState } from "@decartai/sdk";
 import { GARMENTS, type Garment } from "@/lib/garments";
 import { loadGarmentBlob } from "@/lib/image";
 import { loadUsage, remainingSeconds, saveUsage, type UsageStore } from "@/lib/keyUsage";
+import { pruneEmptyKeys } from "@/lib/pruneKeys";
 import { model, RotatingSession, type KeyPool } from "@/lib/rotatingSession";
 
 export type Phase = "idle" | "starting" | "live";
@@ -142,6 +143,8 @@ export function useTryOn() {
 
     updatePhase("starting");
     setMessage(null);
+    // Clear out keys that have hit zero since last time, in the background.
+    pruneEmptyKeys();
 
     try {
       const pool = await loadPool();
@@ -177,7 +180,11 @@ export function useTryOn() {
         output: () => outputRef.current,
         events: {
           onConnection: setConnection,
-          onSwitching: setSwitching,
+          onSwitching: (switching) => {
+            setSwitching(switching);
+            // Whatever the old key complained about is no longer relevant to the viewer.
+            if (switching) setMessage(null);
+          },
           onLive: () => updatePhase("live"),
           onError: setMessage,
           onEnd: end,
@@ -214,6 +221,7 @@ export function useTryOn() {
   // Show the countdown before the first start.
   useEffect(() => {
     loadPool().catch(() => {});
+    pruneEmptyKeys();
   }, [loadPool]);
 
   // Release the camera and the realtime sessions if the page unmounts.

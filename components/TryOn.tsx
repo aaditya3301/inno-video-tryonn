@@ -114,7 +114,7 @@ export default function TryOn() {
                   <div className="overlay">
                     <span className="spinner" />
                     {switching
-                      ? "Switching to your next API key…"
+                      ? "Connecting again for a better try-on…"
                       : connection === "reconnecting"
                         ? "Reconnecting…"
                         : "Starting your live session…"}

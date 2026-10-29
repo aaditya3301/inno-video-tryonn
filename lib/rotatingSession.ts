@@ -2,6 +2,7 @@ import { createDecartClient, models, type ConnectionState, type RealTimeClient }
 import type { Garment } from "@/lib/garments";
 import { loadGarmentBlob } from "@/lib/image";
 import { budgetOf, saveUsage, usageOf, type UsageStore } from "@/lib/keyUsage";
+import { pruneEmptyKeys } from "@/lib/pruneKeys";
 
 export const model = models.realtime("lucy-vton-latest");
 
@@ -55,6 +56,9 @@ const STANDBY_GRACE_SECONDS = 8;
 
 /** Session-end reasons that only rule out this key, so the next one takes over. */
 const SWITCH_REASONS = new Set(["insufficient_credits", "session_limit"]);
+
+/** Running out of credits is handled by switching keys, so those messages are never shown to the viewer. */
+const isCreditMessage = (message: string) => /credit/i.test(message);
 
 function describeSessionEnd(reason: string): string {
   switch (reason) {
@@ -155,7 +159,9 @@ export class RotatingSession {
       this.o.events.onEnd(
         allOut
           ? "All your API keys are out of credits. Add fresh keys to keys.csv."
-          : `Couldn't connect with any of your API keys. ${this.lastError ?? ""}`.trim(),
+          : `Couldn't connect with any of your API keys. ${
+              this.lastError && !isCreditMessage(this.lastError) ? this.lastError : ""
+            }`.trim(),
       );
       return;
     }
@@ -215,7 +221,7 @@ export class RotatingSession {
 
     slot.rt = rt;
     rt.on("error", (err) => {
-      if (slot === this.active) this.o.events.onError(err.message);
+      if (slot === this.active && !isCreditMessage(err.message)) this.o.events.onError(err.message);
     });
     rt.on("sessionEnded", ({ reason }) => this.onSlotEnded(slot, reason));
 
@@ -257,7 +263,7 @@ export class RotatingSession {
     if (!this.isCurrent(slot)) return;
     const message = err instanceof Error ? err.message : String(err);
     this.lastError = message;
-    if (/credit/i.test(message)) this.markExhausted(slot.keyId);
+    if (isCreditMessage(message)) this.markExhausted(slot.keyId);
     else this.failed.add(slot.keyId);
 
     if (slot === this.standby) {
@@ -297,6 +303,8 @@ export class RotatingSession {
     usageOf(this.o.usage, keyId).exhausted = true;
     saveUsage(this.o.usage);
     this.o.events.onUsage();
+    // The server confirms the balance and removes the key from the key store if it is at zero.
+    pruneEmptyKeys();
   }
 
   /** Adds the time since the last tick to every key that is generating (and so being billed). */
