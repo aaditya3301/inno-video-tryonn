@@ -1,6 +1,6 @@
 # Live Try-On
 
-A small Next.js app that streams your webcam to [Decart](https://decart.ai)'s realtime virtual try-on model (`lucy-vton-latest`, fast mode), and lets you swap between 12 garments with one click.
+A small Next.js app that streams your webcam to [Decart](https://decart.ai)'s realtime virtual try-on model (`lucy-vton-latest`, fast mode), and lets you swap between 22 garments with one click.
 
 Based on the `standalone` example from [DecartAI/tryon-examples](https://github.com/DecartAI/tryon-examples) (MIT). The garment images in `public/garments` come from Wikimedia Commons; sources and licenses are in [`public/garments/CREDITS.md`](public/garments/CREDITS.md).
 
@@ -35,7 +35,8 @@ deployment commands, GoDaddy DNS instructions, costs, and key rotation.
 - `lib/keys.ts` — loads the key pool from `keys.csv` (re-read on every request), `DECART_API_KEYS` and `DECART_API_KEY`.
 - `app/api/token/route.ts` — `GET` lists the pool as hashed ids; `POST { keyId }` mints a short-lived client token for one key. The permanent keys never reach the browser.
 - `lib/rotatingSession.ts` — the live session. It connects to Decart over WebRTC, swaps garments with `setImage(image, { prompt })` without reconnecting, and rotates keys: shortly before the current key is expected to run dry it opens a standby session on the next key (already wearing the selected garment), and when Decart ends the current one with `insufficient_credits` the standby's stream is swapped in.
-- `lib/keyUsage.ts` — the countdown. Decart has no balance API, so seconds of live generation are counted per key in `localStorage` against a budget: `CREDITS_PER_KEY` (default 1000) ÷ 4 credits/sec ≈ 250 seconds until a key has actually run out, then however long that key really lasted.
+- `lib/keyUsage.ts` — estimates, in the browser, how long the current key will last so the next key can be started a few seconds early. Seconds of live generation are counted per key in `localStorage` against a budget: `CREDITS_PER_KEY` (default 1000) ÷ 4 credits/sec ≈ 250 seconds, then however long that key really lasted. The real balances are on `/billing`.
+- `lib/credits.ts`, `lib/gcpSecret.ts`, `app/billing/` — the billing page: it asks Decart for each key's credits and removes keys that are at zero (from `keys.csv` and the Secret Manager secret).
 - `hooks/useTryOn.ts` — opens the camera and connects the session to React state.
 - `lib/garments.ts` — the garment catalog. Each entry has an image and a prompt; edit or add entries here.
 - `components/TryOn.tsx` — the page; `components/GarmentCarousel.tsx` — the endless, swipeable garment picker (swipe, tap, arrow buttons or arrow keys all change the outfit).
@@ -46,9 +47,17 @@ Drop a clean product shot (plain background, at least 512×512) in `public/garme
 
 ## Rotating API keys
 
-The try-on model in fast mode (`speed: "fast"`, for lower latency) bills 4 credits per second, so a 1000-credit key lasts about 4 minutes. The app rotates through every key in `keys.csv`. The timer at the bottom of the page shows the estimated time left across all of them and which key is on screen. Keys that run out are remembered in the browser and skipped; new keys are picked up the next time you press **Start**. If you top up keys that ran out, use **Reset the timer** under the Start button.
+The try-on model in fast mode (`speed: "fast"`, for lower latency) bills 4 credits per second, so a 1000-credit key lasts about 4 minutes. The app rotates through every key in `keys.csv`. The real credits and time left across all keys are on the [billing page](#billing-page). Keys that run out are remembered in the browser and skipped; new keys are picked up the next time you press **Start**. If you top up keys that ran out, use the **Try them again** link under the Start button.
 
 Handoffs overlap by a couple of seconds (both keys are billed while the standby comes up), which keeps the picture from dropping. If a key ends sooner than estimated, the app falls back to connecting the next key on the spot, which takes a few seconds; the estimate corrects itself from then on.
+
+## Billing page
+
+Open `/billing` (for example `https://livetryon.fabricvton.com/billing`) to see the real credits left on every key, the total across all keys, and the time that buys (credits ÷ 4 per second, counted per key so a key's leftover under one second isn't included). The page asks Decart's `GET /v1/credits` for each key every time it loads. `/api/billing` returns the same numbers as JSON. Neither ever shows a key, only a short hash.
+
+When a key is at zero credits the page also removes it from the key list: from `keys.csv` locally, and on Google Cloud from the `KEYS_SECRET` secret (saved as a new secret version, so the old list can be restored). Keys that only exist in the `DECART_API_KEYS` variable can't be removed by the app and are flagged instead. Add `?prune=0` to check without removing. Set `REMOVE_BELOW_CREDITS` to remove keys earlier, for example `4` removes keys that can no longer pay for one second.
+
+Keys that belong to the same Decart account share one balance, so that balance shows up under each of them and the total counts it more than once.
 
 ## Cost note
 

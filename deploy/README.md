@@ -48,8 +48,8 @@ gcloud run deploy livetryon --project=$tryonProject --region=$tryonRegion `
   --image=$tryonImage --service-account="livetryon-run@$tryonProject.iam.gserviceaccount.com" `
   --allow-unauthenticated --ingress=all --port=8080 --cpu=1 --memory=512Mi `
   --concurrency=40 --timeout=60 --min=0 --max=1 --cpu-throttling `
-  --set-env-vars 'NODE_ENV=production,NEXT_TELEMETRY_DISABLED=1,CREDITS_PER_KEY=1000' `
-  --set-secrets=DECART_API_KEYS=livetryon-decart-keys:1
+  --set-env-vars 'NODE_ENV=production,NEXT_TELEMETRY_DISABLED=1,CREDITS_PER_KEY=1000,KEYS_SECRET=livetryon-decart-keys' `
+  --set-secrets=DECART_API_KEYS=livetryon-decart-keys:latest
 if ($LASTEXITCODE -ne 0) { throw 'Deployment failed.' }
 ```
 
@@ -90,9 +90,31 @@ gcloud secrets versions add livetryon-decart-keys `
   --project=project-422405a7-b76c-49df-b1c --data-file=keys.csv
 ```
 
-Use the returned version number in the deployment command's `--set-secrets`
-argument and redeploy. Include all desired keys in the CSV; local `.env.local`
-is not uploaded. Disable unused old secret versions after confirming the update.
+The app reads the newest version of this secret at runtime (`KEYS_SECRET`), so
+new keys apply within about 30 seconds and no redeploy is needed. The
+`DECART_API_KEYS` variable is only a fallback if Secret Manager can't be read.
+Include all desired keys in the CSV; local `.env.local` is not uploaded. Disable
+unused old secret versions after confirming the update.
+
+## Billing page and removing empty keys
+
+`/billing` asks Decart for the credits on every key and shows the total credits
+and time left. When a key is at zero it is removed by saving a new secret version
+without it (the old version stays, so a removal can be undone by re-enabling it
+or adding the old text back). For that, the runtime service account needs
+permission to add versions, in addition to the read access it already has:
+
+```powershell
+gcloud secrets add-iam-policy-binding livetryon-decart-keys `
+  --project=project-422405a7-b76c-49df-b1c `
+  --member="serviceAccount:livetryon-run@project-422405a7-b76c-49df-b1c.iam.gserviceaccount.com" `
+  --role="roles/secretmanager.secretVersionAdder"
+```
+
+Without that role the page still works, shows the balances, and reports that it
+could not update the key list. `/billing` and `/api/billing` are public like the
+rest of the app, so anyone with the URL can see the balances and trigger removal
+of keys that are already empty.
 
 ## Cost and storage
 
