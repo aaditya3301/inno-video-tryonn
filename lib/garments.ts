@@ -1,4 +1,4 @@
-export const CATEGORIES = ["Formal", "Coats", "Jackets", "Tops"] as const;
+export const CATEGORIES = ["Formal", "Coats", "Jackets", "Tops", "Ethnic"] as const;
 export type GarmentCategory = (typeof CATEGORIES)[number];
 
 export interface Garment {
@@ -18,7 +18,7 @@ export interface Garment {
   prompt: string;
 }
 
-export const GARMENTS: Garment[] = [
+const ITEMS: Garment[] = [
   {
     id: "suit-glen",
     name: "Glen Check Suit",
@@ -122,9 +122,104 @@ export const GARMENTS: Garment[] = [
     id: "kurta",
     name: "Blue Khadi Kurta",
     type: "Kurta",
-    category: "Tops",
+    category: "Ethnic",
     image: "/garments/kurta.jpg",
     prompt:
       "Substitute the current top with a light blue handwoven khadi cotton kurta with a short mandarin collar, a buttoned placket, small woven motifs and knee length, relaxed fit.",
   },
+  {
+    id: "bomber-green",
+    name: "Teal Bomber",
+    type: "Bomber jacket",
+    category: "Jackets",
+    image: "/garments/bomber-green.jpg",
+    prompt:
+      "Substitute the current top with a deep teal green lightweight bomber jacket with a ribbed stand collar, a brass front zipper, slanted hand pockets, a zip pocket on the sleeve and ribbed cuffs and hem, relaxed boxy fit.",
+  },
+  {
+    id: "windbreaker-purple",
+    name: "Purple Windbreaker",
+    type: "Windbreaker",
+    category: "Jackets",
+    image: "/garments/windbreaker-purple.jpg",
+    prompt:
+      "Substitute the current top with a deep purple lightweight windbreaker with a bright blue fleece-lined stand collar, a full-length blue zipper, a chest zip pocket, two hand pockets and elasticated cuffs and hem, regular fit.",
+  },
+  {
+    id: "blazer-grey",
+    name: "Grey Blazer",
+    type: "Blazer",
+    category: "Formal",
+    image: "/garments/blazer-grey.jpg",
+    prompt:
+      "Substitute the current top with a warm grey unstructured washed cotton-linen blazer with notch lapels, a patch chest pocket, two patch hip pockets and a two-button front, soft worn-in texture, slim fit.",
+  },
+  {
+    id: "parka-orange",
+    name: "Rust Parka",
+    type: "Hooded parka",
+    category: "Coats",
+    image: "/garments/parka-orange.jpg",
+    prompt:
+      "Substitute the current top with a rust orange hooded parka in a smooth lightweight shell fabric with a concealed zip front, a drawstring waist, two angled flap pockets and a drawcord hood and hem, loose oversized fit.",
+  },
+  {
+    id: "sweater-nordic",
+    name: "Nordic Sweater",
+    type: "Knit sweater",
+    category: "Tops",
+    image: "/garments/sweater-nordic.jpg",
+    prompt:
+      "Substitute the current top with a navy knit Nordic-pattern pullover sweater with a cream, red and blue snowflake yoke, a quarter-zip stand collar and striped ribbed cuffs and hem, relaxed fit.",
+  },
+  {
+    id: "cardigan-brown",
+    name: "Brown Cardigan",
+    type: "Cardigan",
+    category: "Tops",
+    image: "/garments/cardigan-brown.jpg",
+    prompt:
+      "Substitute the current top with a brown marl wool knit cardigan with a deep V-neck, a full button front with brown buttons, four pleated flap pockets, ribbed cuffs and a straight hip-length body, roomy fit.",
+  },
+  {
+    id: "flannel-olive",
+    name: "Olive Flannel Shirt",
+    type: "Flannel shirt",
+    category: "Tops",
+    image: "/garments/flannel-olive.jpg",
+    prompt:
+      "Substitute the current top with an olive drab wool flannel button-up shirt with a pointed collar, two buttoned chest flap pockets, a full front placket, button cuffs and a curved shirttail hem, straight classic fit.",
+  },
+  {
+    id: "shirt-striped",
+    name: "Striped Shirt",
+    type: "Casual shirt",
+    category: "Tops",
+    image: "/garments/shirt-striped.jpg",
+    prompt:
+      "Substitute the current top with a long-sleeved cotton button-down shirt in bold horizontal blue stripes with yellow, green and pink bands, a button-down collar, one chest pocket and buttoned cuffs, relaxed casual fit.",
+  },
+  {
+    id: "waistcoat-nehru",
+    name: "Black Nehru Waistcoat",
+    type: "Waistcoat",
+    category: "Ethnic",
+    image: "/garments/waistcoat-nehru.jpg",
+    prompt:
+      "Substitute the current top with a black wool Nehru-style waistcoat with a mandarin stand collar, a five-button front with silver crest buttons, a welt chest pocket and two welt hip pockets, worn over a plain white long-sleeve shirt, tailored slim fit.",
+  },
+  {
+    id: "kurta-gold",
+    name: "Gold Brocade Kurta",
+    type: "Kurta",
+    category: "Ethnic",
+    image: "/garments/kurta-gold.jpg",
+    prompt:
+      "Substitute the current top with a knee-length golden-tan jacquard cotton-blend kurta with a mandarin collar, an embroidered and beaded placket with gold buttons, a swirling paisley woven pattern, long sleeves and side slits, straight fit.",
+  },
 ];
+
+/** Grouped by category in the order of CATEGORIES, keeping the order above within each group. */
+export const GARMENTS: Garment[] = [...ITEMS].sort(
+  (a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category),
+);
