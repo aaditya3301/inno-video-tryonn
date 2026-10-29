@@ -75,24 +75,6 @@ button:focus-visible,
 
 /* ---------- Time left (deliberately faint) ---------- */
 
-.timer {
-  position: fixed;
-  right: calc(16px + env(safe-area-inset-right));
-  bottom: calc(10px + env(safe-area-inset-bottom));
-  z-index: 10;
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.18;
-  pointer-events: none;
-}
-
-.timer-low {
-  color: var(--danger);
-  opacity: 0.45;
-}
-
 /* ---------- Layout ---------- */
 
 .layout {

@@ -14,12 +14,6 @@ const CONNECTION_LABEL = {
   disconnected: "Disconnected",
 } as const;
 
-function formatTime(totalSeconds: number): string {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
 function CameraIcon() {
   return (
     <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
@@ -92,7 +86,7 @@ export default function TryOn() {
                 </button>
                 {timer?.allExhausted && (
                   <button className="btn-link" onClick={resetUsage}>
-                    Topped up your keys? Reset the timer
+                    Topped up your keys? Try them again
                   </button>
                 )}
               </div>
@@ -161,11 +155,6 @@ export default function TryOn() {
         </section>
       </main>
 
-      {timer && (
-        <div className={`timer${timer.remaining <= 60 ? " timer-low" : ""}`}>
-          {formatTime(timer.remaining)}
-        </div>
-      )}
     </div>
   );
 }
