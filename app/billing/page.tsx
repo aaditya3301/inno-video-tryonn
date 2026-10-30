@@ -66,7 +66,9 @@ export default async function BillingPage({
           <span className={styles.label}>Credits left</span>
           <strong className={styles.big}>{number.format(billing.totalCredits)}</strong>
           <span className={styles.hint}>
-            across {billing.keysInPool} {billing.keysInPool === 1 ? "key" : "keys"}
+            {billing.accountsInPool < billing.keysInPool
+              ? `across ${billing.accountsInPool} ${billing.accountsInPool === 1 ? "account" : "accounts"} (${billing.keysInPool} keys, shared balances counted once)`
+              : `across ${billing.keysInPool} ${billing.keysInPool === 1 ? "key" : "keys"}`}
           </span>
         </div>
       </section>
@@ -95,7 +97,7 @@ export default async function BillingPage({
           </thead>
           <tbody>
             {billing.keys.map((key, index) => (
-              <tr key={key.id} className={key.removed ? styles.gone : undefined}>
+              <tr key={key.id} className={key.removed || key.sameAs ? styles.gone : undefined}>
                 <td>
                   Key {index + 1} <span className={styles.id}>{key.id.slice(0, 6)}</span>
                 </td>
@@ -106,6 +108,9 @@ export default async function BillingPage({
                     {key.removed ? "Removed" : STATUS_LABEL[key.status]}
                   </span>
                   {key.note && !key.removed && <span className={styles.note}>{key.note}</span>}
+                  {key.sameAs && !key.removed && (
+                    <span className={styles.note}>Same account as Key {key.sameAs}, counted once</span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -122,8 +127,8 @@ export default async function BillingPage({
 
       <p className={styles.foot}>
         Keys at zero credits are removed from the key list when this page loads.{" "}
-        <a href="?prune=0">Check without removing</a> · <a href="/api/billing">JSON</a>. Keys that belong to the same
-        Decart account share one balance, so it shows up under each of them.
+        <a href="?prune=0">Check without removing</a> · <a href="/api/billing">JSON</a>. Keys on the same Decart account
+        share one balance, so it is counted once in the totals and the extra keys are marked.
       </p>
     </main>
   );

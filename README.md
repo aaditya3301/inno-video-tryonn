@@ -57,7 +57,15 @@ Open `/billing` (for example `https://livetryon.fabricvton.com/billing`) to see 
 
 You don't have to open the page for that to happen. The app also asks the server to check the keys and clear out empty ones when the page loads, when you press **Start**, and whenever a key runs dry during a session (at most once every 10 seconds). Keys that run dry while nobody has the page open are cleared the next time someone opens it. When a key is at zero credits it is removed from the key list: from `keys.csv` locally, and on Google Cloud from the `KEYS_SECRET` secret (saved as a new secret version, so the old list can be restored). Keys that only exist in the `DECART_API_KEYS` variable can't be removed by the app and are flagged instead. Add `?prune=0` to check without removing. Set `REMOVE_BELOW_CREDITS` to remove keys earlier, for example `4` removes keys that can no longer pay for one second.
 
-Keys that belong to the same Decart account share one balance, so that balance shows up under each of them and the total counts it more than once.
+### Keys on the same Decart account
+
+Keys that belong to the same Decart account share one balance. The app works out which keys share an account by creating a short-lived token for each key (a token names its owner; only a hash of that id is kept or shown), and then:
+
+- `/billing` marks a key as "Same account as Key N" and counts that account's balance once in the credits and time totals;
+- the **Add a key** dialog warns when a new key is on an account already in the list ("shares that balance and adds no extra time") and offers **Save anyway**;
+- when switching keys, a key on the same account as one that is running is never picked, and when one key runs out all keys on its account are skipped.
+
+If an account can't be worked out (Decart didn't answer in time), the key is treated as its own account and tried again on the next check.
 
 ### Adding a key from the billing page
 

@@ -1,3 +1,5 @@
+import { countOncePerAccount, groupAccounts } from "@/lib/accountGroups";
+import { accountsOf } from "@/lib/accounts";
 import { CREDITS_PER_SECOND, loadApiKeys, removeKeys, type ApiKey, type RemoveResult } from "@/lib/keys";
 
 const CREDITS_URL = "https://api.decart.ai/v1/credits";
@@ -17,16 +19,22 @@ export interface KeyBalance {
   status: KeyStatus;
   note?: string;
   removed?: boolean;
+  /** Short hash of the Decart account that owns the key, when it could be worked out. */
+  account?: string;
+  /** 1-based position of an earlier key on the same account. Such a key shares that balance. */
+  sameAs?: number;
 }
 
 export interface Billing {
   checkedAt: string;
   keys: KeyBalance[];
-  /** Credits across the keys that are still in the pool. */
+  /** Credits across the keys still in the pool, each account counted once. */
   totalCredits: number;
-  /** Seconds across the keys still in the pool; each key's leftover under one second is not counted. */
+  /** Seconds across the keys still in the pool, each account counted once; a leftover under one second is not counted. */
   totalSeconds: number;
   keysInPool: number;
+  /** Distinct Decart accounts among the keys still in the pool. */
+  accountsInPool: number;
   /** What was taken out of the key list on this check, and from where. */
   removal: RemoveResult;
 }
@@ -61,7 +69,11 @@ export async function fetchBalance({ id, key }: ApiKey): Promise<KeyBalance> {
 
 async function check(prune: boolean): Promise<Billing> {
   const keys = await loadApiKeys();
-  const balances = await Promise.all(keys.map(fetchBalance));
+  const [balances, accounts] = await Promise.all([Promise.all(keys.map(fetchBalance)), accountsOf(keys)]);
+  for (const b of balances) b.account = accounts.get(b.id);
+  groupAccounts(balances.map((b) => ({ account: b.account ?? null }))).sameAs.forEach((first, i) => {
+    if (first !== null) balances[i].sameAs = first + 1;
+  });
 
   // Only a clean "0 credits" answer removes a key; errors and rejections never do.
   const empty = balances.filter((b) => b.status === "empty").map((b) => b.id);
@@ -72,12 +84,17 @@ async function check(prune: boolean): Promise<Billing> {
   }
 
   const live = balances.filter((b) => !b.removed);
+  const totals = countOncePerAccount(
+    live.map((b) => ({ account: b.account ?? null, credits: b.credits })),
+    CREDITS_PER_SECOND,
+  );
   return {
     checkedAt: new Date().toISOString(),
     keys: balances,
-    totalCredits: live.reduce((sum, b) => sum + (b.credits ?? 0), 0),
-    totalSeconds: live.reduce((sum, b) => sum + (b.seconds ?? 0), 0),
+    totalCredits: totals.credits,
+    totalSeconds: totals.seconds,
     keysInPool: live.length,
+    accountsInPool: groupAccounts(live.map((b) => ({ account: b.account ?? null }))).accounts,
     removal,
   };
 }

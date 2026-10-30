@@ -9,6 +9,8 @@ export const model = models.realtime("lucy-vton-latest");
 export interface KeyPool {
   keyIds: string[];
   secondsPerKey: number;
+  /** Key id to Decart account id, where known. Keys on one account share one balance. */
+  accounts?: Record<string, string>;
 }
 
 export interface RotatingSessionEvents {
@@ -140,13 +142,22 @@ export class RotatingSession {
     return !this.stopped && (slot === this.active || slot === this.standby);
   }
 
+  private accountOf(keyId: string | undefined): string | undefined {
+    return keyId ? this.o.pool.accounts?.[keyId] : undefined;
+  }
+
   private pickKey(after?: string): string | null {
     const { keyIds } = this.o.pool;
     const busy = new Set([this.active?.keyId, this.standby?.keyId]);
+    // A key on the same account as one already running would bill the same balance twice.
+    const busyAccounts = new Set([...busy].map((id) => this.accountOf(id)).filter(Boolean));
     const from = after ? keyIds.indexOf(after) + 1 : 0;
     for (let i = 0; i < keyIds.length; i++) {
       const id = keyIds[(from + i) % keyIds.length];
-      if (!busy.has(id) && !this.failed.has(id) && !this.o.usage.keys[id]?.exhausted) return id;
+      const account = this.accountOf(id);
+      if (busy.has(id) || this.failed.has(id) || this.o.usage.keys[id]?.exhausted) continue;
+      if (account && busyAccounts.has(account)) continue;
+      return id;
     }
     return null;
   }
@@ -300,7 +311,11 @@ export class RotatingSession {
   }
 
   private markExhausted(keyId: string) {
-    usageOf(this.o.usage, keyId).exhausted = true;
+    // Every key on the same account has the same empty balance.
+    const account = this.accountOf(keyId);
+    for (const id of this.o.pool.keyIds) {
+      if (id === keyId || (account && this.accountOf(id) === account)) usageOf(this.o.usage, id).exhausted = true;
+    }
     saveUsage(this.o.usage);
     this.o.events.onUsage();
     // The server confirms the balance and removes the key from the key store if it is at zero.

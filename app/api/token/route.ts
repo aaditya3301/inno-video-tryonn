@@ -1,5 +1,6 @@
 import { createDecartClient } from "@decartai/sdk";
 import { NextResponse } from "next/server";
+import { accountsOf } from "@/lib/accounts";
 import { loadApiKeys, secondsPerKey } from "@/lib/keys";
 
 const NO_KEYS_ERROR =
@@ -20,8 +21,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const keys = await loadApiKeys();
+  // Which keys share a Decart account, so a switch never lands on a key with the same empty balance.
+  const accounts = await accountsOf(keys, 4_000);
   return NextResponse.json(
-    { keyIds: keys.map((k) => k.id), secondsPerKey: secondsPerKey() },
+    {
+      keyIds: keys.map((k) => k.id),
+      secondsPerKey: secondsPerKey(),
+      accounts: Object.fromEntries(accounts),
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

@@ -88,7 +88,7 @@ export function useTryOn() {
     const res = await fetch("/api/token", { cache: "no-store" });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error ?? "Could not load your API keys.");
-    poolRef.current = { keyIds: body.keyIds, secondsPerKey: body.secondsPerKey };
+    poolRef.current = { keyIds: body.keyIds, secondsPerKey: body.secondsPerKey, accounts: body.accounts };
     refreshTimer();
     return poolRef.current;
   }, [refreshTimer]);

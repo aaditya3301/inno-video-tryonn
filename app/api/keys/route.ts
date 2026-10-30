@@ -1,8 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { findSameAccount } from "@/lib/accountGroups";
+import { accountsOf } from "@/lib/accounts";
 import { clearBillingCache, fetchBalance } from "@/lib/credits";
 import { KEY_PATTERN } from "@/lib/keyText";
-import { addKey, CREDITS_PER_SECOND, KeyStoreError, loadApiKeys } from "@/lib/keys";
+import { addKey, CREDITS_PER_SECOND, KeyStoreError, loadApiKeys, toApiKey } from "@/lib/keys";
 
 const WINDOW_MS = 10 * 60_000;
 /** Requests that got as far as asking Decart about a key. */
@@ -34,7 +36,11 @@ export async function POST(request: Request) {
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   if (origin && new URL(origin).host !== host) return fail("Forbidden", 403);
 
-  const body = (await request.json().catch(() => ({}))) as { key?: unknown; password?: unknown };
+  const body = (await request.json().catch(() => ({}))) as {
+    key?: unknown;
+    password?: unknown;
+    confirm?: unknown;
+  };
 
   const required = process.env.BILLING_PASSWORD;
   if (required) {
@@ -57,6 +63,30 @@ export async function POST(request: Request) {
   if (balance.status === "invalid") return fail("Decart rejected this key, so it wasn't saved.", 400);
   if (balance.status === "error") return fail("Couldn't reach Decart to check this key. Try again in a moment.", 502);
   if (balance.status !== "ok") return fail("This key has no usable credits left, so it wasn't saved.", 400);
+
+  // A key on a Decart account we already have shares that balance and adds no time:
+  // say so and let the person decide, unless they have already confirmed.
+  if (body.confirm !== true) {
+    const existing = await loadApiKeys();
+    if (!existing.some((k) => k.key === key)) {
+      const candidate = toApiKey(key);
+      const accounts = await accountsOf([...existing, candidate]);
+      const sameAs = findSameAccount(
+        existing.map((k) => accounts.get(k.id)),
+        accounts.get(candidate.id),
+      );
+      if (sameAs) {
+        return NextResponse.json(
+          {
+            sameAccount: true,
+            sameAs,
+            error: `This key is on the same Decart account as Key ${sameAs}, so it shares that balance and adds no extra time.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+  }
 
   try {
     const result = await addKey(key);

@@ -8,6 +8,8 @@ type State =
   | { kind: "idle" }
   | { kind: "saving" }
   | { kind: "error"; message: string }
+  /** The key works but is on an account that is already in the list; saving needs a second click. */
+  | { kind: "confirm"; message: string }
   | { kind: "done"; message: string };
 
 const number = new Intl.NumberFormat("en-IN");
@@ -38,9 +40,13 @@ export default function AddKeyDialog({ passwordRequired }: { passwordRequired: b
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, password }),
+        body: JSON.stringify({ key, password, confirm: state.kind === "confirm" }),
       });
       const body = await res.json().catch(() => ({}));
+      if (res.status === 409 && body.sameAccount) {
+        setState({ kind: "confirm", message: body.error });
+        return;
+      }
       if (!res.ok) {
         setState({ kind: "error", message: body.error ?? "Couldn't save the key." });
         return;
@@ -84,7 +90,11 @@ export default function AddKeyDialog({ passwordRequired }: { passwordRequired: b
             spellCheck={false}
             required
             value={key}
-            onChange={(e) => setKey(e.target.value)}
+            onChange={(e) => {
+              setKey(e.target.value);
+              // A different key needs its own check, so drop any earlier "save anyway" prompt.
+              if (state.kind === "confirm") setState({ kind: "idle" });
+            }}
           />
 
           {passwordRequired ? (
@@ -113,6 +123,11 @@ export default function AddKeyDialog({ passwordRequired }: { passwordRequired: b
               {state.message}
             </p>
           )}
+          {state.kind === "confirm" && (
+            <p className={styles.warn} role="alert">
+              {state.message} Save it anyway?
+            </p>
+          )}
           {state.kind === "done" && (
             <p className={styles.ok} role="status">
               {state.message}
@@ -124,7 +139,7 @@ export default function AddKeyDialog({ passwordRequired }: { passwordRequired: b
               {state.kind === "done" ? "Close" : "Cancel"}
             </button>
             <button type="submit" className={styles.primary} disabled={saving || !key.trim()}>
-              {saving ? "Checking and saving…" : "Save"}
+              {saving ? "Checking and saving…" : state.kind === "confirm" ? "Save anyway" : "Save"}
             </button>
           </div>
         </form>

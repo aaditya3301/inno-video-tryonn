@@ -12,11 +12,12 @@ export interface ApiKey {
 
 const KEYS_FILE = path.join(process.cwd(), "keys.csv");
 
+export function toApiKey(key: string): ApiKey {
+  return { id: createHash("sha256").update(key).digest("hex").slice(0, 12), key };
+}
+
 function toApiKeys(raw: string[]): ApiKey[] {
-  return [...new Set(raw)].map((key) => ({
-    id: createHash("sha256").update(key).digest("hex").slice(0, 12),
-    key,
-  }));
+  return [...new Set(raw)].map(toApiKey);
 }
 
 /** The keys secret when one is configured and readable; null means "use the environment variable". */
