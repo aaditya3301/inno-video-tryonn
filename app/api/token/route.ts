@@ -2,6 +2,7 @@ import { createDecartClient } from "@decartai/sdk";
 import { NextResponse } from "next/server";
 import { accountsOf } from "@/lib/accounts";
 import { loadApiKeys, secondsPerKey } from "@/lib/keys";
+import { siteAuthorized } from "@/lib/siteAuth";
 
 const NO_KEYS_ERROR =
   "No API keys found. Add them to keys.csv (one per line), then try again.";
@@ -17,6 +18,7 @@ function isCrossSite(request: Request): boolean {
 // Lists the key pool (hashed ids only) so the browser can rotate through it
 // and estimate how much try-on time is left.
 export async function GET(request: Request) {
+  if (!siteAuthorized(request.headers)) return NextResponse.json({ error: "Password required" }, { status: 401 });
   if (isCrossSite(request)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -36,6 +38,7 @@ export async function GET(request: Request) {
 // Mints a short-lived client token for one key in the pool so the permanent
 // keys never reach the browser.
 export async function POST(request: Request) {
+  if (!siteAuthorized(request.headers)) return NextResponse.json({ error: "Password required" }, { status: 401 });
   if (isCrossSite(request)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

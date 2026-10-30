@@ -5,6 +5,7 @@ import { accountsOf } from "@/lib/accounts";
 import { clearBillingCache, fetchBalance } from "@/lib/credits";
 import { KEY_PATTERN } from "@/lib/keyText";
 import { addKey, CREDITS_PER_SECOND, KeyStoreError, loadApiKeys, toApiKey } from "@/lib/keys";
+import { siteAuthorized } from "@/lib/siteAuth";
 
 const WINDOW_MS = 10 * 60_000;
 /** Requests that got as far as asking Decart about a key. */
@@ -32,6 +33,7 @@ const fail = (error: string, status: number) => NextResponse.json({ error }, { s
  * too. The key is never logged or sent back; only its short id.
  */
 export async function POST(request: Request) {
+  if (!siteAuthorized(request.headers)) return fail("Password required", 401);
   const origin = request.headers.get("origin");
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   if (origin && new URL(origin).host !== host) return fail("Forbidden", 403);

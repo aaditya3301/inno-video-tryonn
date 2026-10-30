@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
 import { getBilling, type KeyStatus } from "@/lib/credits";
 import { CREDITS_PER_SECOND } from "@/lib/keys";
+import { siteAuthorized } from "@/lib/siteAuth";
 import AddKeyDialog from "./AddKeyDialog";
 import styles from "./billing.module.css";
 
@@ -32,6 +35,7 @@ export default async function BillingPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  if (!siteAuthorized(await headers())) notFound();
   const { prune } = await searchParams;
   const billing = await getBilling({ prune: prune !== "0" });
 

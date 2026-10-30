@@ -144,8 +144,29 @@ gcloud artifacts repositories set-cleanup-policies livetryon `
   --policy=deploy/artifact-cleanup.json --no-dry-run
 ```
 
-The app retains its existing public access model. Anyone with the URL can
-start a session and consume Decart credits; same-origin checks are not a login.
+## Site password
+
+The whole site is locked behind `SITE_PASSWORD`, injected from the secret
+`livetryon-site-password`, so only people who know it can load the page or start a
+session. The runtime service account needs `roles/secretmanager.secretAccessor` on
+that secret. Create it once, then attach it on deploy:
+
+```powershell
+# create the secret with a password (the file must not end in a newline)
+gcloud secrets create livetryon-site-password --project=project-422405a7-b76c-49df-b1c --replication-policy=automatic
+gcloud secrets versions add livetryon-site-password --project=project-422405a7-b76c-49df-b1c --data-file=password.txt
+gcloud secrets add-iam-policy-binding livetryon-site-password --project=project-422405a7-b76c-49df-b1c `
+  --member="serviceAccount:livetryon-run@project-422405a7-b76c-49df-b1c.iam.gserviceaccount.com" `
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud run services update livetryon --project=project-422405a7-b76c-49df-b1c `
+  --region=asia-southeast1 --update-secrets=SITE_PASSWORD=livetryon-site-password:latest
+```
+
+To change the password, add a new secret version and restart the service (deploy
+or `gcloud run services update livetryon ... --update-labels=rotated=1`); everyone
+is logged out when it changes. Scripts can call the site with `curl -u any:PASSWORD`.
+The fallback `*.run.app` address is locked too.
 
 ## Verification on 2026-10-23
 

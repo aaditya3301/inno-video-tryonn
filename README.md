@@ -73,6 +73,12 @@ The **Add a key** button on `/billing` opens a dialog. Paste a Decart API key an
 
 The page is public, so anyone with its link could add keys. Set `BILLING_PASSWORD` to require a password in the dialog (10 wrong passwords block further tries for ten minutes). Without it the dialog says so. Saves are limited to 20 checks per ten minutes, and the list is capped at 200 keys.
 
+## Site password
+
+Every live session spends Decart credits, so set `SITE_PASSWORD` to keep strangers from using your keys. When it is set, the whole site is locked: visitors are sent to a login page (`/login`), and after entering the password they stay logged in for 30 days (a signed, HttpOnly cookie). Page loads, `/api/token`, `/billing` and the other APIs all need that login. Changing the password logs everyone out. Scripts can use `curl -u anyname:PASSWORD`. Ten wrong passwords from one address block that address for ten minutes.
+
+Leave `SITE_PASSWORD` empty and there is no lock, which is what you want when running locally. On Google Cloud the password lives in the `livetryon-site-password` secret; see [`deploy/README.md`](deploy/README.md).
+
 ## Cost note
 
-Every live session consumes Decart credits, and `/api/token` is a public endpoint on your deployment (it only accepts same-origin requests). If you share the URL widely, consider adding authentication or rate limiting to that route.
+Every live session consumes Decart credits. Set `SITE_PASSWORD` (above) on any deployment other people could find, because without it anyone with the URL can start sessions on your keys.
