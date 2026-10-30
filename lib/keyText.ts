@@ -13,6 +13,13 @@ export function parseKeys(text: string): string[] {
     .filter((cell) => KEY_PATTERN.test(cell));
 }
 
+/** The text with one more key on its own line at the end, keeping the file's line-ending style. */
+export function appendKey(text: string, key: string): string {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const body = text === "" || text.endsWith("\n") ? text : text + eol;
+  return `${body}${key}${eol}`;
+}
+
 /**
  * The same text with the given keys taken out. A line that only held a dead key
  * (and maybe a label) is dropped; other keys on the same line, comments, headers

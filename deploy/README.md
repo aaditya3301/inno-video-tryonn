@@ -112,7 +112,17 @@ gcloud secrets add-iam-policy-binding livetryon-decart-keys `
 ```
 
 Without that role the page still works, shows the balances, and reports that it
-could not update the key list. `/billing` and `/api/billing` are public like the
+could not update the key list. The same role lets the **Add a key** dialog on
+`/billing` save new keys. To require a password in that dialog, store one in a
+secret and inject it as `BILLING_PASSWORD`:
+
+```powershell
+gcloud run services update livetryon --project=project-422405a7-b76c-49df-b1c `
+  --region=asia-southeast1 --update-secrets=BILLING_PASSWORD=livetryon-billing-password:latest
+```
+
+The runtime service account also needs `roles/secretmanager.secretAccessor` on
+that secret. `/billing` and `/api/billing` are public like the
 rest of the app, so anyone with the URL can see the balances and trigger removal
 of keys that are already empty.
 

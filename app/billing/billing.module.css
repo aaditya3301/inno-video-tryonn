@@ -16,6 +16,13 @@
   color: var(--text);
 }
 
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .title {
   margin: 0;
   font-size: 32px;

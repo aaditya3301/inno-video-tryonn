@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { keysSecretName, readKeysSecret, writeKeysSecret } from "@/lib/gcpSecret";
-import { parseKeys, stripKeys } from "@/lib/keyText";
+import { appendKey, parseKeys, stripKeys } from "@/lib/keyText";
 
 export interface ApiKey {
   /** Short hash of the key — safe to send to the browser, stable while the key is unchanged. */
@@ -102,6 +102,51 @@ export async function removeKeys(ids: string[]): Promise<RemoveResult> {
     console.log(`Removed ${result.removed.length} exhausted key(s) [${result.removed.join(", ")}] from ${result.from.join(" and ")}`);
   }
   return result;
+}
+
+/** A problem saving a key that is safe to show to the person adding it. */
+export class KeyStoreError extends Error {}
+
+/** Keeps a public form from growing the key list without limit. */
+const MAX_KEYS = 200;
+
+export interface AddResult {
+  /** False when the key was already in the list. */
+  added: boolean;
+  id: string;
+  /** Where it was saved. */
+  to: string[];
+}
+
+/**
+ * Adds one key to every store that is in use: keys.csv when it exists and, on
+ * Cloud Run, the Secret Manager secret (as a new version). Callers check that the
+ * key works before calling this.
+ */
+export async function addKey(key: string): Promise<AddResult> {
+  const id = toApiKeys([key])[0].id;
+  const existing = await loadApiKeys();
+  if (existing.some((k) => k.key === key)) return { added: false, id, to: [] };
+  if (existing.length >= MAX_KEYS) {
+    throw new KeyStoreError(`The key list is full (${MAX_KEYS} keys). Remove some before adding more.`);
+  }
+
+  const to: string[] = [];
+  const csv = await readFile(KEYS_FILE, "utf8").catch(() => null);
+  if (csv !== null) {
+    await writeFile(KEYS_FILE, appendKey(csv, key), "utf8");
+    to.push("keys.csv");
+  }
+  if (keysSecretName()) {
+    const text = (await readKeysSecret({ fresh: true })) ?? "";
+    await writeKeysSecret(appendKey(text, key));
+    to.push("Secret Manager");
+  }
+  if (to.length === 0) {
+    throw new KeyStoreError("There is nowhere to save it. Create keys.csv, or set KEYS_SECRET to a Secret Manager secret.");
+  }
+  console.log(`Added key [${id}] to ${to.join(" and ")}`);
+  return { added: true, id, to };
 }
 
 /** Credits the try-on model in fast mode spends per second (see lib/rotatingSession.ts). */

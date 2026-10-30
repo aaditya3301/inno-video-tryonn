@@ -59,6 +59,12 @@ You don't have to open the page for that to happen. The app also asks the server
 
 Keys that belong to the same Decart account share one balance, so that balance shows up under each of them and the total counts it more than once.
 
+### Adding a key from the billing page
+
+The **Add a key** button on `/billing` opens a dialog. Paste a Decart API key and press **Save**: the server first asks Decart whether the key works and has credits (junk, rejected and empty keys are refused), then adds it to `keys.csv` locally and, on Google Cloud, to the Secret Manager secret as a new version. The page updates straight away and the key is used from the next session. A key already in the list is reported and not added twice. The same permission that removes empty keys (`secretVersionAdder`) is what lets it save.
+
+The page is public, so anyone with its link could add keys. Set `BILLING_PASSWORD` to require a password in the dialog (10 wrong passwords block further tries for ten minutes). Without it the dialog says so. Saves are limited to 20 checks per ten minutes, and the list is capped at 200 keys.
+
 ## Cost note
 
 Every live session consumes Decart credits, and `/api/token` is a public endpoint on your deployment (it only accepts same-origin requests). If you share the URL widely, consider adding authentication or rate limiting to that route.

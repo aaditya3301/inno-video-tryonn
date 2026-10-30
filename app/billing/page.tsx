@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getBilling, type KeyStatus } from "@/lib/credits";
 import { CREDITS_PER_SECOND } from "@/lib/keys";
+import AddKeyDialog from "./AddKeyDialog";
 import styles from "./billing.module.css";
 
 export const metadata: Metadata = {
@@ -47,7 +48,10 @@ export default async function BillingPage({
       <a className={styles.back} href="/">
         ← Live Try-On
       </a>
-      <h1 className={styles.title}>Billing</h1>
+      <div className={styles.head}>
+        <h1 className={styles.title}>Billing</h1>
+        <AddKeyDialog passwordRequired={Boolean(process.env.BILLING_PASSWORD)} />
+      </div>
       <p className={styles.sub}>
         Every key was asked for its credits at {checked} IST. Refresh the page to check again.
       </p>

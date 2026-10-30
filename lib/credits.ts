@@ -31,7 +31,7 @@ export interface Billing {
   removal: RemoveResult;
 }
 
-async function fetchBalance({ id, key }: ApiKey): Promise<KeyBalance> {
+export async function fetchBalance({ id, key }: ApiKey): Promise<KeyBalance> {
   try {
     const res = await fetch(CREDITS_URL, {
       headers: { "x-api-key": key },
@@ -83,6 +83,11 @@ async function check(prune: boolean): Promise<Billing> {
 }
 
 const cache = new Map<boolean, { at: number; result: Promise<Billing> }>();
+
+/** Forget recent results, e.g. right after a key was added so the page shows it at once. */
+export function clearBillingCache(): void {
+  cache.clear();
+}
 
 /**
  * Asks Decart how many credits every key has left. With `prune`, keys that are at
