@@ -26,6 +26,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except the files the login page itself needs.
-  matcher: ["/((?!_next/static|_next/image|icon\\.png|apple-icon\\.png|logo\\.png).*)"],
+  // Everything except files that are safe to share: the ones the login page needs, and the
+  // garment photos. The photos have to stay open because the image resizer (_next/image)
+  // fetches each one itself, without the visitor's login cookie.
+  matcher: ["/((?!_next/static|_next/image|icon\\.png|apple-icon\\.png|logo\\.png|garments/).*)"],
 };
