@@ -5,6 +5,7 @@
 !package-lock.json
 !next.config.ts
 !tsconfig.json
+!proxy.ts
 !app/
 !app/**
 !components/

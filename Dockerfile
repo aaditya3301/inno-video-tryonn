@@ -10,8 +10,10 @@ COPY components ./components
 COPY hooks ./hooks
 COPY lib ./lib
 COPY public ./public
-COPY next.config.ts tsconfig.json ./
+COPY next.config.ts tsconfig.json proxy.ts ./
 RUN npm run build
+# The password lock (proxy.ts) must be compiled in; fail the build rather than ship an open site.
+RUN test -f .next/server/middleware.js
 
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
